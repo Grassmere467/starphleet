@@ -104,7 +104,7 @@ function latest_AUTHOR()
 function run_orders()
 {
   autodeploy () {
-    info autodeploy from "${1}"
+    info autodeploy from XXXX "${1}"
     [ -n "${AUTODEPLOY}" ] && echo "${1}" > "${AUTODEPLOY}";
     SERVICE_GIT_URL="${1}"
   }
