@@ -9,6 +9,8 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "${DIR}/tools"
 
+echo "Updated from ME!"
+
 if [ -n "${GIT_SSH}" ]; then
   info GIT_SSH already configured ${GIT_SSH}
 else
