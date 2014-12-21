@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 sudo apt-get -y update
 sudo apt-get install -y git
-sudo git clone https://github.com/wballard/starphleet.git /starphleet
+sudo git clone https://github.com/Grassmere467/starphleet.git /starphleet
 sudo bash /starphleet/scripts/starphleet-install
