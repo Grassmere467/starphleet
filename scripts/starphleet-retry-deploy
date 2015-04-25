@@ -1,0 +1,28 @@
+#!/usr/bin/env starphleet-launcher
+### Usage:
+###    starphleet-retry-deploy <order>
+### --help
+###
+### Force a service to redeploy, without needing to strobe or push a new
+### version
+run_as_root_or_die
+
+# This format is used to mimic a sha
+DATE_TIME=$(date +d%y%m%d-d%H%M%S)
+# Make a fake service name that will behave like a real service name
+SERVICE_NAME="${order}-${DATE_TIME}"
+
+start --no-wait starphleet_serve_order name="${SERVICE_NAME}" order="${order}"
+
+# Add warning about the sha situation
+info This tool will attempt to deploy your service but will only publish
+info if things succeed.
+info
+warn This deploy used the following SHA:
+warn
+warn    ${DATE_TIME}
+warn
+info Your code will attempt to deploy normally but the shas will differ
+info
+info If things proceed as expected - touching your orders file will get
+info your shas back in place

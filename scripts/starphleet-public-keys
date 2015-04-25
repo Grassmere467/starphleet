@@ -30,20 +30,18 @@ do
     echo '' >> ${AUTHFILE}
   fi
 done
+cat "${ADMIRALSSH}/id_rsa.pub" >> ${AUTHFILE}
 
 chmod 600 ${AUTHFILE}
 chown ${ADMIRAL}:${ADMIRAL} ${AUTHFILE}
 
 #look for SSL keys
 [ -d "${NGINX_CONF}/published" ] || mkdir -p "${NGINX_CONF}/published"
-if [ -f "${HEADQUARTERS_LOCAL}/ssl/crt" ] && [ -f "${HEADQUARTERS_LOCAL}/ssl/key" ]; then
-  if diff "${HEADQUARTERS_LOCAL}/ssl/crt" "${NGINX_CONF}/published/crt" > /dev/null; then
-    #keys are the same
-    :
-  else
-    info updating SSL keys
-    cp "${HEADQUARTERS_LOCAL}/ssl/crt" "${NGINX_CONF}/published/crt"
-    cp "${HEADQUARTERS_LOCAL}/ssl/key" "${NGINX_CONF}/published/key"
-    restart starphleet_nginx
-  fi
+if [ "$(diff -r ${HEADQUARTERS_LOCAL}/ssl/ ${NGINX_CONF}/published/ | grep -v 'Only in ${NGINX_CONF}/published/')" == "" ] ; then
+  #keys are the same
+  :
+else
+  info updating SSL keys
+  cp ${HEADQUARTERS_LOCAL}/ssl/* ${NGINX_CONF}/published/
+  restart starphleet_nginx || true
 fi

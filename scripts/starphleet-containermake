@@ -32,7 +32,8 @@ CONTAINER_CONF=${TMPDIR-/tmp}/${CONTAINER_NAME}.conf
 
 #starphleet-base is a create, all orders are a clones to delta0
 cat << EOF > ${CONTAINER_CONF}
-lxc.mount.entry = ${STARPHLEET_ROOT} ${CONTAINER_ROOT}/rootfs${STARPHLEET_ROOT} none bind,rw 0 0
+lxc.mount.entry = ${STARPHLEET_ROOT} ${CONTAINER_ROOT}/rootfs/${STARPHLEET_ROOT:-var/starphleet} none bind,r 0 0
+lxc.mount.entry = ${ADMIRAL_HOME} ${CONTAINER_ROOT}/rootfs/${ADMIRAL_HOME} none defaults,bind,create=dir 0 0
 EOF
 
 trap 'rm -rf ${CONTAINER_CONF}' EXIT
@@ -45,6 +46,8 @@ if lxc-ls | grep "^${container_name}$"; then
   exit 0
 else
   info making a new container ${CONTAINER_NAME}
+  # load the ship name as configured in /etc/starphleet-name or, just use the sucky hostname
+  SHIP_NAME=$([ -r /etc/starphleet-name ] && $(echo cat /etc/starphleet-name) || echo $(hostname))
 
   starphleet-lxc-destroy ${CONTAINER_NAME}
   if [ -z "${base_container_name}" ]; then
@@ -67,7 +70,7 @@ if dev_mode ; then
   echo "lxc.mount.entry = ${STARPHLEET_DEV_DIR} ${CONTAINER_ROOT}/rootfs/var/data none bind,rw 0 0" >> ${CONTAINER_CONF}
   echo "lxc.mount.entry = ${STARPHLEET_DEV_DIR} ${CONTAINER_ROOT}/rootfs/var/git none bind,rw 0 0" >> ${CONTAINER_CONF}
 else
-  echo "lxc.mount.entry = ${STARPHLEET_SHARED_DATA} ${CONTAINER_ROOT}/rootfs/var/data none bind,rw 0 0" >> ${CONTAINER_CONF}
+  echo "lxc.mount.entry = ${STARPHLEET_SHARED_DATA} ${CONTAINER_ROOT}/rootfs/var/data none rbind,rw 0 0" >> ${CONTAINER_CONF}
 fi
 
 
@@ -97,10 +100,15 @@ fi
   #host file updates
   bridge_ip
   lxc-attach --name ${CONTAINER_NAME} -- bash -c "echo -e '\n${BRIDGE_IP}  localship' >> /etc/hosts"
+  lxc-attach --name ${CONTAINER_NAME} -- bash -c "printf '\nexport SHIP_NAME=%s\n' ${SHIP_NAME} >> /usr/bin/tools"
   lxc-attach --name ${CONTAINER_NAME} -- bash -c "echo -e '\n127.0.0.1  $(< /etc/hostname)' >> /etc/hosts"
   lxc-attach --name ${CONTAINER_NAME} -- bash -c "echo -e '\n127.0.0.1  ${CONTAINER_NAME}' >> /etc/hosts"
 
   lxc-attach --name ${CONTAINER_NAME} -- bash -c 'chmod 777 /var/log/'
+  lxc-attach --name ${CONTAINER_NAME} -- bash -c 'useradd -s /bin/bash ${ADMIRAL} || true'
+  lxc-attach --name ${CONTAINER_NAME} -- bash -c 'adduser ${ADMIRAL} sudo'
+  lxc-attach --name ${CONTAINER_NAME} -- bash -c 'chown -R ${ADMIRAL}:${ADMIRAL} ${ADMIRAL_HOME}/.ssh'
+  lxc-attach --name ${CONTAINER_NAME} -- bash -c 'echo -e "\n${ADMIRAL} ALL=NOPASSWD:ALL" >> /etc/sudoers'
   lxc-attach --name ${CONTAINER_NAME} -- bash -c 'echo -e "\n${STARPHLEET_APP_USER} ALL=NOPASSWD:ALL" >> /etc/sudoers'
   lxc-attach --name ${CONTAINER_NAME} -- sudo -H -u ${STARPHLEET_APP_USER} bash -c "source /usr/bin/tools; /build_script"
 

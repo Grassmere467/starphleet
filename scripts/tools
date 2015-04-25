@@ -2,34 +2,36 @@
 
 ulimit -n ${MAX_OPEN_FILES} > /dev/null
 
+die() { echo $1 ; exit ${2-1} ;}
+
 #Library of colorized logging functions, just source this
 function error() {
-  echo -e  '\E[31m'"\033[1m$*\033[0m"
+  echo -e  '\E[31m'"$(date +"%x %X - ")\033[1m$*\033[0m"
 }
 
 function announce() {
-  echo -e  '\E[34m'"\033[1m$*\033[0m"
+  echo -e  '\E[34m'"$(date +"%x %X - ")\033[1m$*\033[0m"
 }
 
 function fatal() {
-  echo -e  '\E[31m'"\033[1m$*\033[0m"
+  echo -e  '\E[31m'"$(date +"%x %X - ")\033[1m$*\033[0m"
   exit 1
 }
 
 function trace() {
-  >&2 echo -e  '\E[35m'"\033[1m$*\033[0m"
+  >&2 echo -e  '\E[35m'"$(date +"%x %X - ")\033[1m$*\033[0m"
 }
 
 function info() {
-  echo -e  '\E[32m'"\033[1m$*\033[0m"
+  echo -e  '\E[32m'"$(date +"%x %X - ")\033[1m$*\033[0m"
 }
 
 function warn() {
-  echo -e  '\E[33m'"\033[1m$*\033[0m"
+  echo -e  '\E[33m'"$(date +"%x %X - ")\033[1m$*\033[0m"
 }
 
 function log() {
-  echo -e "$*"
+  echo -e "$(date +"%x %X - ")$*"
 }
 
 function code() {
@@ -78,7 +80,7 @@ function make_admiral() {
   adduser ${ADMIRAL} sudo
   adduser ${ADMIRAL} adm
   adduser ${ADMIRAL} root
-  test -d ${ADMIRAL_HOME}/.ssh || mkdir -p ${ADMIRAL_HOME}/.ssh
+  test -d ${ADMIRAL_HOME}/.ssh || mkdir -p ${ADMIRAL_HOME}/.ssh; ssh-keygen -t rsa -f "${ADMIRAL_HOME}/.ssh/id_rsa" -q -N "" -C 'admiral of the phleet'
   mkdir -p ${STARPHLEET_ROOT}
   chown -R ${ADMIRAL}:${ADMIRAL} ${STARPHLEET_ROOT}
   chown -R ${ADMIRAL}:${ADMIRAL} ${ADMIRAL_HOME}
@@ -101,11 +103,16 @@ function latest_AUTHOR()
   export AUTHOR=$(git --git-dir "${1}/.git" --work-tree "${1}" log -1 --format='%ae')
 }
 
+#placeholder
+function expose() {
+  true
+}
+
 function run_orders()
 {
   autodeploy () {
-    info autodeploy from XXXX "${1}"
-    [ -n "${AUTODEPLOY}" ] && echo "${1}" > "${AUTODEPLOY}";
+    info autodeploy from "${1}"
+    [ -n "${AUTODEPLOY}" ] && echo "${1}" > "${AUTODEPLOY}"
     SERVICE_GIT_URL="${1}"
   }
 
@@ -113,7 +120,10 @@ function run_orders()
     STOP_BEFORE_AUTODEPLOY=1
   }
 
+  # If the order is unpublished - push an 'empty' link to ${AUTODEPLOY} so the previous
+  # git repo doesn't accidently get re-copied into the wrong order folder
   unpublished () {
+    [ -n "${AUTODEPLOY}" ] && echo "" > "${AUTODEPLOY}"
     UNPUBLISHED=1
   }
 
@@ -125,6 +135,10 @@ function run_orders()
 
   beta () {
     BETAS[$1]=$2
+  }
+
+  proxy_for () {
+    PROXY_FOR_NAMES="$@"
   }
 
   source "${1}" || true
@@ -145,16 +159,54 @@ function container_environment() {
 }
 
 function ec2_mounts() {
-  if mount | grep '/var/lib/lxc'; then
-    :
-  else
-    #may have another device on ec2
-    [ -b /dev/xvdb ] && (mount | grep /mnt) &&  mount --bind /mnt /var/lib/lxc || true
+  # Dynamically build storage devices on EC2.
+  #
+  # Priority to who gets the space goes something like
+  #    /dev/xvdb -> /var/lib/lxc
+  #    /dev/xvdc -> /var/starphleet
+  #    /dev/xvdd -> /var/log/biglogs
+  #
+  # Default configuration is in overlay/etc/starphleet
+
+  for drive in "${!EC2_DRIVES[@]}"
+  do
+    if [ -b "${drive}" ]; then
+      # If the drive doesn't have ext4 we presume it isn't setup yet
+      if [[ ! $(file -s "${drive}" | grep ext4) ]]; then
+        info Setting up ["${drive}"] for [${EC2_DRIVES[$drive]}]
+        # Format the drive
+        mkfs.ext4 "${drive}"
+        # Mount it where it goes
+        mkdir -p "${EC2_DRIVES[$drive]}"
+        mount "${drive}" "${EC2_DRIVES[$drive]}"
+        # Strip any mounts using this device from fstab
+        cat /etc/fstab | grep -v "${drive}" > /tmp/fstab.tmp
+        # Re-add our config to fstab
+        #   Note: There are tabs on purpose in here - be careful
+        echo "${drive}	${EC2_DRIVES[$drive]}	auto	defaults,nobootwait,comment=cloudconfig	0	2" >> /tmp/fstab.tmp
+        # Move the tmp file into place
+        mv /tmp/fstab.tmp /etc/fstab
+      fi
+    fi
+  done
+
+  # If we have a mount for syslog we move our syslog to the new mount
+  # and symlink back to the old
+  if [ -d /var/log/biglogs ] && [ ! -L /var/log/syslog ]; then
+    stop rsyslog
+    mv /var/log/syslog /var/log/biglogs/syslog
+    ln -s /var/log/biglogs/syslog /var/log/syslog
+    start rsyslog
   fi
+
 }
 
 function dev_mode() {
-  if [ -d /hosthome ]; then
+  if [ -f /var/starphleet/live ]; then
+    false
+  elif [ -d /hosthome ]; then
+    true
+  elif [ -d /var/git ]; then
     true
   else
     false
